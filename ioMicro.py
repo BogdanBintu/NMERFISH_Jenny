@@ -465,7 +465,7 @@ def get_txyz_small(im0_,im1_,sz_norm=10,delta=3,plt_val=False):
     txyz = np.unravel_index(np.argmin(im_cor), im_cor.shape)-np.array(im0.shape)+1
     #txyz = np.unravel_index(np.argmax(im_cor_),im_cor_.shape)+delta_
     return txyz
-def full_deconv(im_,s_=500,pad=100,psf=None,parameters={'method': 'wiener', 'beta': 0.001, 'niter': 50},gpu=True,force=False):
+def full_deconv(im_,s_=500,pad=100,psf=None,parameters={'method': 'wiener', 'beta': 0.001, 'niter': 50},gpu=True,force=True):
     im0=np.zeros_like(im_)
     sx,sy = im_.shape[1:]
     ixys = []
