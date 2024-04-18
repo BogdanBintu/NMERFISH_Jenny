@@ -4248,3 +4248,101 @@ def get_best_XV2(cp,resc=10):
     cp.tzxy_plusT = tzxy_plus
     cp.tzxy_minusT = tzxy_minus
     cp.tzxyfT = (cp.tzxy_plusT+cp.tzxy_minusT)/2
+
+def get_best_translation_pointsV2(fl,fl_ref,save_folder,resc=5,th=4,im_med_fl=None,psf_fl=''):
+    ### THis loads the dapi features and registers the images for files fl and fl_ref
+    set_ = ''
+    obj = get_dapi_features(fl,save_folder,set_,psf_fl=psf_fl,im_med_fl=im_med_fl)
+    obj_ref = get_dapi_features(fl_ref,save_folder,set_,psf_fl=psf_fl,im_med_fl=im_med_fl)
+    tzxyf,tzxy_plus,tzxy_minus,N_plus,N_minus = np.array([0,0,0]),np.array([0,0,0]),np.array([0,0,0]),0,0
+    if (len(obj.Xh_plus)>0) and (len(obj_ref.Xh_plus)>0):
+        X = obj.Xh_plus#[:,:3]
+        X_ref = obj_ref.Xh_plus#[:,:3]
+        X = X[X[:,-1]>th][:,:3]
+        X_ref = X_ref[X_ref[:,-1]>th][:,:3]
+        tzxy_plus,N_plus = get_best_translation_points(X,X_ref,resc=resc,return_counts=True)
+    if (len(obj.Xh_minus)>0) and (len(obj_ref.Xh_minus)>0):
+        X = obj.Xh_minus#[:,:3]
+        X_ref = obj_ref.Xh_minus#[:,:3]
+        X = X[X[:,-1]>th][:,:3]
+        X_ref = X_ref[X_ref[:,-1]>th][:,:3]
+        tzxy_minus,N_minus = get_best_translation_points(X,X_ref,resc=resc,return_counts=True)
+    if np.max(np.abs(tzxy_minus-tzxy_plus))<=2:
+        tzxyf = -(tzxy_plus*N_plus+tzxy_minus*N_minus)/(N_plus+N_minus)
+    else:
+        tzxyf = -[tzxy_plus,tzxy_minus][np.argmax([N_plus,N_minus])]
+    return [tzxyf,tzxy_plus,tzxy_minus,N_plus,N_minus]
+def im_max__from_Xh(Xh,ds=5):
+    X = Xh[:,1:3]
+    H = Xh[:,-1]
+    m = np.min(X,axis=0)
+    X = X-m
+    X = np.round(X).astype(int)
+    M = np.max(X,axis=0)
+    im_max = np.zeros(M+1,dtype=np.float32)
+    im_max[tuple(X.T)]=H
+    im_norm= np.zeros([10*ds]*2,dtype=np.float32)
+    im_norm[ds*5,ds*5]=1
+    hrescale = np.max(cv2.GaussianBlur(im_norm, (ds,ds),0))
+    im_max_ = cv2.GaussianBlur(im_max, (ds,ds),0)/hrescale
+    return im_max_
+def calc_color_matrix(x,y,order=2,ransac=False):
+    """This gives a quadratic color transformation (in matrix form)
+    x is Nx3 vector of positions in the reference channel (typically cy5)
+    y is the Nx3 vector of positions in another channel (i.e. cy7)
+    return m_ a 3x7 matrix which when multipled with x,x**2,1 returns y-x
+    This m_ is indended to be used with apply_colorcor
+    """ 
+    x_ = np.array(y)# ref zxy
+    y_ = np.array(x)-x_# dif zxy
+    # get a list of exponents
+    exps = []
+    for p in range(order+1):
+        for i in range(p+1):
+            for j in range(p+1):
+                if i+j<=p:
+                    exps.append([i,j,p-i-j])
+    # construct A matrix
+    A = np.zeros([len(x_),len(exps)])
+    for iA,(ix,iy,iz) in enumerate(exps):
+        s = (x_[:,0]**ix*x_[:,1]**iy*x_[:,2]**iz)
+        A[:,iA]=s
+    if ransac:
+        ransac = linear_model.RANSACRegressor()
+        ransac.base_estimator = linear_model.LinearRegression(fit_intercept=False)
+        m_ = []
+        for iy in range(len(x_[0])):
+            ransac.fit(A, y_[:,iy])
+            m_.append(ransac.estimator_.coef_)
+        m_=np.array(m_)
+    else:
+        m_ = [np.linalg.lstsq(A, y_[:,iy])[0] for iy in range(len(x_[0]))]
+    m_=np.array(m_)
+    return m_
+def apply_colorcor(x,m=None):
+    """This applies chromatic abberation correction to order 2
+    x is a Nx3 vector of positions (typically 750(-->647))
+    m is a matrix computed by function calc_color_matrix
+    y is the corrected vector in another channel"""
+    if m is None:
+        return x
+    exps = []
+    order_max=10
+    for p in range(order_max+1):
+        for i in range(p+1):
+            for j in range(p+1):
+                if i+j<=p:
+                    exps.append([i,j,p-i-j])
+    #find the order
+    mx,my = m.shape
+    order = int((my-1)/mx)
+    assert(my<len(exps))
+    x_ = np.array(x)
+    # construct A matrix
+    exps = exps[:my]
+    A = np.zeros([len(x_),len(exps)])
+    for iA,(ix,iy,iz) in enumerate(exps):
+        s = (x_[:,0]**ix*x_[:,1]**iy*x_[:,2]**iz)
+        A[:,iA]=s
+    diff = [np.dot(A,m_) for m_ in m]
+    return x_+np.array(diff).T
