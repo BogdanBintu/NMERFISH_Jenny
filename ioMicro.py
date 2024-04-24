@@ -1751,6 +1751,8 @@ class decoder():
                 Xf = np.concatenate([X,h,icolRs],axis=-1)
                 XH = np.concatenate([XH,Xf],axis=0)
         self.XH=XH
+
+    
     def get_counts_per_cell(self,nbad=0):
         keep_good = np.sum(self.res_pruned==-1,axis=-1)<=nbad
         Xcms = self.Xcms[keep_good]
@@ -2143,6 +2145,59 @@ class decoder_simple():
                             icolR = np.array([[icol,bit]]*len(Xh))
                             XH_ = np.concatenate([Xh,icolR],axis=-1)
                             XH.extend(XH_)
+        self.XH = np.array(XH)
+    def get_XH_chrom_abb(self, ncols=3,th_h=0,bits = ['P1_A1', 'P1_A2', 'P1_A3', 'P1_A4', 'P1_A5', 'P1_A6', 'P1_A7', 'P1_A8', 'P1_A9', 'P1_A10', 'P1_A11', 'P1_A12', 'P1_B1', 'P1_B2', 'P1_B3', 'P1_B4', 'P1_B5', 'P1_B6', 'P1_B7', 'P1_B8', 'P1_G9', 'P1_G10', 'P1_G11', 'P1_G12', 'P1_H1', 'P1_H2', 'P1_H3', 'P1_H4', 'P1_H5', 'P1_H6', 'P1_H7', 'P1_H8', 'P1_H9', 'P1_H10', 'P1_H11', 'P1_H12', 'P2_A1', 'P2_A2', 'P2_A3', 'P2_A4', 'P2_A5', 'P2_A6', 'P2_A7', 'P2_A8', 'P2_A9', 'P2_A10', 'P2_A11', 'P2_A12', 'P2_B1', 'P2_B2', 'P2_B3', 'P2_B4', 'P2_B5', 'P2_B6', 'P2_B7', 'P2_B8', 'P2_B9', 'P2_B10', 'P2_B11', 'P2_B12', 'P2_C1', 'P2_C2', 'P2_C3', 'P2_C4', 'P2_C5', 'P2_C6', 'P2_C7', 'P2_C8', 'P2_C9', 'P2_C10', 'P2_C11', 'P2_C12', 'P2_D1', 'P2_D2', 'P2_D3', 'P2_D4', 'P2_D5', 'P2_D6', 'P2_D7', 'P2_D8', 'P2_D9', 'P2_D10', 'P2_D11', 'P2_D12', 'P2_E1', 'P2_E2', 'P2_E3', 'P2_E4', 'P2_E5', 'P2_E6', 'P2_E7', 'P2_E8', 'P2_E9', 'P2_E10', 'P2_E11', 'P2_E12', 'P2_F1', 'P2_F2', 'P2_F3', 'P2_F4'],
+          chrom_fl=r'C:\Scripts\NMERFISH_Jenny\dic_chromatic_abberation_Jenny_Scope4_4_17_2024.pkl'):
+        set_ = self.set_
+        fov = self.fov
+        save_folder = self.save_folder
+        drift_fl = save_folder+os.sep+'driftNew_'+fov.split('.')[0]+'--'+set_+'.pkl'
+    
+        drifts,all_flds,fov,fl_ref = pickle.load(open(drift_fl,'rb'))
+        self.drifts,self.all_flds,self.fov,self.fl_ref = drifts,all_flds,fov,fl_ref
+
+        XH = []
+
+        # have dictionary to allow first time the bit occurs
+        dic_bits = {bit:0 for bit in bits}
+        for iH in tqdm(np.arange(len(all_flds))):
+            fld = all_flds[iH]
+            #if 'MER' in os.path.basename(fld):
+            for icol in range(ncols):
+                tag = os.path.basename(fld)
+                save_fl = save_folder+os.sep+fov.split('.')[0]+'--'+tag+'--col'+str(icol)+'__Xhfits.npz'
+                letter = tag.split('_')[2][0]
+                plate = 'P'+tag.split('_P')[-1].split('_')[0]+'_'
+                wells = tag.replace(letter,'').split('_')[-ncols:]
+                well = wells[icol]
+                
+                bit_name = plate+letter+well#;H8_P1_B10_11_12
+                print(bit_name)
+                
+                if bit_name in bits:
+                    if dic_bits[bit_name] == 0:
+                        bit = bits.index(bit_name)
+                        Xh = np.load(save_fl,allow_pickle=True)['Xh']### load the fits
+                        x3d = Xh[:,:3]
+                        # chromatic abb
+                        if chrom_fl is not None:
+                            dic_chrom = pickle.load(open(chrom_fl,'rb'))
+                            m = dic_chrom.get('m'+str(icol),None)
+                            hfactor = dic_chrom.get('hfactor'+str(icol),1)
+                            x3dT = apply_colorcor(x3d,m=m)
+                            Xh[:,:3] = x3dT
+                            Xh[:,-1] = Xh[:,-1]*hfactor
+                        print(Xh.shape)
+                        if len(Xh.shape):
+                            Xh = Xh[Xh[:,-1]>th_h]
+                            if len(Xh):
+                                tzxy = drifts[iH][0]
+                                Xh[:,:3]+=tzxy# drift correction
+                                
+                                icolR = np.array([[icol,bit]]*len(Xh))
+                                XH_ = np.concatenate([Xh,icolR],axis=-1)
+                                XH.extend(XH_)
+                        dic_bits[bit_name] = 1
         self.XH = np.array(XH)
     def get_inters(self,dinstance_th=2,enforce_color=False):
         """Get an initial intersection of points and save in self.res"""
