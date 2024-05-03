@@ -2570,20 +2570,29 @@ def apply_brightness_correction(dec,plt_val=True,npts=50000):
 def combine_scoresRef(scoresRef,scoresRefT):
     return [np.sort(np.concatenate([scoresRef[icol],scoresRefT[icol]]),axis=0)
      for icol in np.arange(len(scoresRef))]
-def get_score_per_color(dec):
-    H = np.median(dec.XH_pruned[...,-3],axis=1)
-    D = dec.XH_pruned[...,:3]-np.mean(dec.XH_pruned[...,:3],axis=1)[:,np.newaxis]
-    D = np.mean(np.linalg.norm(D,axis=-1),axis=-1)
-    score = np.array([H,-D]).T
+def get_score_per_color(dec,include_dbits=False):
+    H = np.nanmedian(dec.XH_pruned[...,-3],axis=1)
+    D = dec.XH_pruned[...,:3]-np.nanmean(dec.XH_pruned[...,:3],axis=1)[:,np.newaxis]
+    D = np.nanmean(np.linalg.norm(D,axis=-1),axis=-1)
+    if include_dbits:
+        db = dec.dist_best
+        score = np.array([H,-D,-db]).T
+    else:
+        score = np.array([H,-D]).T
     score = np.sort(score,axis=0)
     return [score[dec.XH_pruned[:,0,-2]==icol] for icol in np.arange(dec.ncols)]
     
-def get_score_withRef(dec,scoresRef,plt_val=False,gene=None,iSs=None,th_min=-np.inf):
-    H = np.median(dec.XH_pruned[...,-3],axis=1)
-    D = dec.XH_pruned[...,:3]-np.mean(dec.XH_pruned[...,:3],axis=1)[:,np.newaxis]
-    D = np.mean(np.linalg.norm(D,axis=-1),axis=-1)
-    score = np.array([H,-D]).T
-    keep_color = [dec.XH_pruned[:,0,-2]==icol for icol in np.arange(dec.ncols)]
+def get_score_withRef(dec,scoresRef,plt_val=False,gene=None,iSs=None,th_min=-np.inf,include_dbits=False):
+    H = np.nanmedian(dec.XH_pruned[...,-3],axis=1)
+    D = dec.XH_pruned[...,:3]-np.nanmean(dec.XH_pruned[...,:3],axis=1)[:,np.newaxis]
+    D = np.nanmean(np.linalg.norm(D,axis=-1),axis=-1)
+    if include_dbits:
+        db = dec.dist_best
+        score = np.array([H,-D,-db]).T
+    else:
+        score = np.array([H,-D]).T
+    
+    keep_color = [np.nanmedian(dec.XH_pruned[:,:,-2],axis=1)==icol for icol in np.arange(dec.ncols)]
     scoreA = np.zeros(len(H))
     for icol in range(dec.ncols):
         scoresRef_ = scoresRef[icol]
@@ -4401,3 +4410,308 @@ def apply_colorcor(x,m=None):
         A[:,iA]=s
     diff = [np.dot(A,m_) for m_ in m]
     return x_+np.array(diff).T
+
+# ---------- add in functions from DecodeBlankAsSet.ipynb
+def get_XH_Jenny(self, ncols=3,th_h=0,bits = ['P1_A1', 'P1_A2', 'P1_A3', 'P1_A4', 'P1_A5', 'P1_A6', 'P1_A7', 'P1_A8', 'P1_A9', 'P1_A10', 'P1_A11', 'P1_A12', 'P1_B1', 'P1_B2', 'P1_B3', 'P1_B4', 'P1_B5', 'P1_B6', 'P1_B7', 'P1_B8', 'P1_G9', 'P1_G10', 'P1_G11', 'P1_G12', 'P1_H1', 'P1_H2', 'P1_H3', 'P1_H4', 'P1_H5', 'P1_H6', 'P1_H7', 'P1_H8', 'P1_H9', 'P1_H10', 'P1_H11', 'P1_H12', 'P2_A1', 'P2_A2', 'P2_A3', 'P2_A4', 'P2_A5', 'P2_A6', 'P2_A7', 'P2_A8', 'P2_A9', 'P2_A10', 'P2_A11', 'P2_A12', 'P2_B1', 'P2_B2', 'P2_B3', 'P2_B4', 'P2_B5', 'P2_B6', 'P2_B7', 'P2_B8', 'P2_B9', 'P2_B10', 'P2_B11', 'P2_B12', 'P2_C1', 'P2_C2', 'P2_C3', 'P2_C4', 'P2_C5', 'P2_C6', 'P2_C7', 'P2_C8', 'P2_C9', 'P2_C10', 'P2_C11', 'P2_C12', 'P2_D1', 'P2_D2', 'P2_D3', 'P2_D4', 'P2_D5', 'P2_D6', 'P2_D7', 'P2_D8', 'P2_D9', 'P2_D10', 'P2_D11', 'P2_D12', 'P2_E1', 'P2_E2', 'P2_E3', 'P2_E4', 'P2_E5', 'P2_E6', 'P2_E7', 'P2_E8', 'P2_E9', 'P2_E10', 'P2_E11', 'P2_E12', 'P2_F1', 'P2_F2', 'P2_F3', 'P2_F4'],
+          chrom_fl=r'C:\Scripts\NMERFISH_Jenny\dic_chromatic_abberation_Jenny_Scope4_4_17_2024.pkl'):
+        set_ = self.set_
+        fov = self.fov
+        save_folder = self.save_folder
+        drift_fl = save_folder+os.sep+'driftNew_'+fov.split('.')[0]+'--'+set_+'.pkl'
+    
+        drifts,all_flds,fov,fl_ref = pickle.load(open(drift_fl,'rb'))
+        # adjust to this machine
+        #fl_ref = fl_ref.replace('/projects/ps-renlab2/wed009/',  r'T:/Jenny/')
+        #all_flds_ = [fld.replace('/projects/ps-renlab2/wed009/',  r'T:/Jenny/') for fld in all_flds]
+        #all_flds = all_flds_
+              
+        self.drifts,self.all_flds,self.fov,self.fl_ref = drifts,all_flds,fov,fl_ref
+
+        XH = []
+
+        # have dictionary to allow first time the bit occurs
+        dic_bits = {bit:0 for bit in bits}
+        for iH in tqdm(np.arange(len(all_flds))):
+            fld = all_flds[iH]
+            #if 'MER' in os.path.basename(fld):
+            for icol in range(ncols):
+                tag = os.path.basename(fld)
+                save_fl = save_folder+os.sep+fov.split('.')[0]+'--'+tag+'--col'+str(icol)+'__Xhfits.npz'
+                letter = tag.split('_')[2][0]
+                plate = 'P'+tag.split('_P')[-1].split('_')[0]+'_'
+                wells = tag.replace(letter,'').split('_')[-ncols:]
+                well = wells[icol]
+
+                R = int(tag.split('_')[0][1:]) # H8
+                bit_name = plate+letter+well#;H8_P1_B10_11_12
+                print(f'bit: {bit_name}, H: {R}')
+                
+                if bit_name in bits:
+                    if dic_bits[bit_name] == 0:
+                    #if True:
+                        bit = bits.index(bit_name)
+                        Xh = np.load(save_fl,allow_pickle=True)['Xh']### load the fits
+                        x3d = Xh[:,:3]
+                        # chromatic abb
+                        if chrom_fl is not None:
+                            dic_chrom = pickle.load(open(chrom_fl,'rb'))
+                            m = dic_chrom.get('m'+str(icol),None)
+                            hfactor = dic_chrom.get('hfactor'+str(icol),1)
+                            x3dT = apply_colorcor(x3d,m=m)
+                            Xh[:,:3] = x3dT
+                            Xh[:,-1] = Xh[:,-1]*hfactor
+                        print(Xh.shape)
+                        if len(Xh.shape):
+                            Xh = Xh[Xh[:,-1]>th_h]
+                            if len(Xh):
+                                tzxy = drifts[R-1][0] # fetching the correct drift files
+                                Xh[:,:3]+=tzxy# drift correction
+                                icolR = np.array([[icol,bit]]*len(Xh))
+                                #icolR = np.array([[icol,bit, R]]*len(Xh))
+                                XH_ = np.concatenate([Xh,icolR],axis=-1)
+                                XH.extend(XH_)
+                        dic_bits[bit_name] = 1
+        self.XH = np.array(XH)
+
+def get_intersV2_Jenny(self,nmin_bits=3,dinstance_th=2,enforce_set=20,redo=False):
+    """Get an initial intersection of points and save in self.res"""
+    self.res_fl = self.decoded_fl.replace('decoded','res')
+    if not os.path.exists(self.res_fl) or redo:
+        
+        res =[]
+        ibits = self.XH[:,-1].astype(int)
+        isets = ibits//enforce_set
+        XH = self.XH
+        for iset in tqdm(np.unique(isets)):
+            inds = np.where((isets==iset))[0]
+            Xs = XH[inds,:3]
+            Ts = cKDTree(Xs)
+            res_ = Ts.query_ball_tree(Ts,dinstance_th)
+            res += [inds[r] for r in res_] # find all pairs where distance is at most distance_th
+        print("Calculating lengths of clusters...")
+        lens = np.array(list(map(len,res))) #an array where each element is the count of points within the distance_th from each respective point in Xs.
+        Mlen = np.max(lens)
+        print("Unfolding indexes...")
+        res_unfolder = np.concatenate(res) #res is a list of list, storing indicies in XH
+        print("Saving to file:",self.res_fl)
+        self.res_unfolder=res_unfolder
+        self.lens=lens
+        
+        #np.savez(self.res_fl,res_unfolder=res_unfolder,lens=lens)
+    else:
+        dic = np.load(self.res_fl)
+        self.res_unfolder=dic['res_unfolder']
+        self.lens=dic['lens']
+        #self.res = res
+    lens =self.lens
+    self.res_unfolder = self.res_unfolder[np.repeat(lens, lens)>=nmin_bits]
+    self.lens = self.lens[lens>=nmin_bits]
+
+def get_icodesV3(dec,nmin_bits=3,iH=-3):
+    import time
+    start = time.time()
+    lens = dec.lens
+    res_unfolder = dec.res_unfolder
+    Mlen = np.max(lens)
+    print("Calculating indexes within cluster...")
+    res_is = np.tile(np.arange(Mlen), len(lens))
+    res_is = res_is[res_is < np.repeat(lens, Mlen)] # res_is is an array holder. the indices within each cluster up to the maximum number of members in that cluster, but only including as many members as each specific cluster actually has.
+    print("Calculating index of molecule...")
+    ires = np.repeat(np.arange(len(lens)), lens) # an array of original point indices
+    #r0 = np.array([r[0] for r in res for r_ in r])
+    print("Calculating index of first molecule...")
+    r0i = np.concatenate([[0],np.cumsum(lens)])[:-1] # a list of indices where each point's cluster data starts but flattened
+    r0 = res_unfolder[np.repeat(r0i, lens)] # a list that selects the starting element of each cluster for each member
+    print("Total time unfolded molecules:",time.time()-start)
+    
+    ### torch
+    ires = torch.from_numpy(ires.astype(np.int64))
+    res_unfolder = torch.from_numpy(res_unfolder.astype(np.int64))
+    res_is = torch.from_numpy(res_is.astype(np.int64))
+    
+    import time
+    start = time.time()
+    print("Computing score...")
+    scoreF = torch.from_numpy(dec.XH[:,iH])[res_unfolder]
+    print("Total time computing score:",time.time()-start)
+    
+    
+    ### organize molecules in blocks for each cluster
+    def get_asort_scores():
+        val = torch.max(scoreF)+2
+        scoreClu = torch.zeros([len(lens),Mlen],dtype=torch.float64)+val
+        scoreClu[ires,res_is]=scoreF
+        asort = scoreClu.argsort(-1)
+        scoreClu = torch.gather(scoreClu,dim=-1,index=asort)
+        scoresF2 = scoreClu[scoreClu<val-1]
+        return asort,scoresF2
+    def get_reorder(x,val=-1):
+        if type(x) is not torch.Tensor:
+            x = torch.from_numpy(np.array(x))
+        xClu = torch.zeros([len(lens),Mlen],dtype=x.dtype)+val
+        xClu[ires,res_is] = x
+        xClu = torch.gather(xClu,dim=-1,index=asort)
+        xf = xClu[xClu>val]
+        return xf
+    
+    
+    import time
+    start = time.time()
+    print("Computing sorting...")
+    asort,scoresF2 = get_asort_scores()
+    res_unfolder2 = get_reorder(res_unfolder,val=-1)
+    del asort
+    del scoreF
+    print("Total time sorting molecules by score:",time.time()-start)
+    
+    
+    
+    import time
+    start = time.time()
+    print("Finding best bits per molecules...")
+    
+    Rs = dec.XH[:,-1].astype(np.int64) # rounds
+    Rs = torch.from_numpy(Rs)
+    Rs_U = Rs[res_unfolder2]
+    nregs,nbits = dec.codes_01.shape # codebook_blank shape
+    score_bits = torch.zeros([len(lens),nbits],dtype=scoresF2.dtype)-1
+    score_bits[ires,Rs_U]=scoresF2
+    
+    
+    codes_lib = torch.from_numpy(np.array(dec.codes__)) # loci x 4 on-bit 
+    
+    
+    codes_lib_01 = torch.zeros([len(codes_lib),nbits],dtype=score_bits.dtype)
+    for icd,cd in enumerate(codes_lib):
+        codes_lib_01[icd,cd]=1
+    codes_lib_01 = codes_lib_01/torch.norm(codes_lib_01,dim=-1)[:,np.newaxis] # normalized codebook
+    print("Finding best code...")
+    batch = 10000
+    icodes_best = torch.zeros(len(score_bits),dtype=torch.int64)
+    dists_best = torch.zeros(len(score_bits),dtype=torch.float32)
+    from tqdm import tqdm
+    for i in tqdm(range((len(score_bits)//batch)+1)):
+        score_bits_ = score_bits[i*batch:(i+1)*batch]
+        if len(score_bits_)>0:
+            score_bits__ = score_bits_.clone()
+            score_bits__[score_bits__==-1]=0
+            score_bits__ = score_bits__/torch.norm(score_bits__,dim=-1)[:,np.newaxis]
+            Mul = torch.matmul(score_bits__,codes_lib_01.T)
+            max_ = torch.max(Mul,dim=-1)
+            icodes_best[i*batch:(i+1)*batch] = max_.indices
+            dists_best[i*batch:(i+1)*batch] = 2-2*max_.values
+    
+    
+    keep_all_bits = torch.sum(score_bits.gather(1,codes_lib[icodes_best])>=0,-1)>=nmin_bits
+    dists_best_ = dists_best[keep_all_bits]
+    score_bits = score_bits[keep_all_bits]
+    icodes_best_ = icodes_best[keep_all_bits]
+    icodesN=icodes_best_
+    
+    indexMols_ = torch.zeros([len(lens),nbits],dtype=res_unfolder2.dtype)-1
+    indexMols_[ires,Rs_U]=res_unfolder2
+    indexMols_ = indexMols_[keep_all_bits]
+    indexMols_ = indexMols_.gather(1,codes_lib[icodes_best_])
+    
+    # make unique
+    indexMols_,rinvMols = get_unique_ordered(indexMols_)
+    icodesN = icodesN[rinvMols]
+    
+    XH = torch.from_numpy(dec.XH)
+    XH_pruned = XH[indexMols_]
+    XH_pruned[indexMols_==-1]=np.nan
+    
+    dec.dist_best = dists_best_[rinvMols].numpy()
+    dec.XH_pruned=XH_pruned.numpy()
+    dec.icodesN=icodesN.numpy()
+    np.savez_compressed(dec.decoded_fl,XH_pruned=dec.XH_pruned,icodesN=dec.icodesN,gns_names = np.array(dec.gns_names),dist_best=dec.dist_best)
+    print("Total time best bits per molecule:",time.time()-start)
+
+def get_score_per_colorV2(dec,include_dbits=False):
+    H = np.nanmedian(dec.XH_pruned[...,-3],axis=1)
+    D = dec.XH_pruned[...,:3]-np.nanmean(dec.XH_pruned[...,:3],axis=1)[:,np.newaxis]
+    D = np.nanmean(np.linalg.norm(D,axis=-1),axis=-1)
+    if include_dbits:
+        db = dec.dist_best
+        score = np.array([H,-D,-db]).T
+    else:
+        score = np.array([H,-D]).T
+    score = np.sort(score,axis=0)
+    return score
+    
+def get_score_withRefV2(dec,scoresRef,plt_val=False,gene=None,iSs=None,th_min=-np.inf,include_dbits=False):
+    H = np.nanmedian(dec.XH_pruned[...,-3],axis=1)
+    D = dec.XH_pruned[...,:3]-np.nanmean(dec.XH_pruned[...,:3],axis=1)[:,np.newaxis]
+    D = np.nanmean(np.linalg.norm(D,axis=-1),axis=-1)
+    if include_dbits:
+        db = dec.dist_best
+        score = np.array([H,-D,-db]).T
+    else:
+        score = np.array([H,-D]).T
+    
+    #keep_color = [np.nanmedian(dec.XH_pruned[:,:,-2],axis=1)==icol for icol in np.arange(dec.ncols)]
+    #scoreA = np.zeros(len(H))
+    #for icol in range(dec.ncols):
+    scoresRef_ = scoresRef
+    score_ = score
+    from scipy.spatial import KDTree
+    scoreA_ = np.zeros(len(score_))
+    if iSs is None: iSs = np.arange(scoresRef_.shape[-1])
+    for iS in iSs:
+        dist_,inds_ = KDTree(scoresRef_[:,[iS]]).query(score_[:,[iS]])
+        scoreA_+=np.log((inds_+1))-np.log(len(scoresRef_))
+    dec.scoreA =scoreA_
+    if plt_val:
+        scoreA = dec.scoreA
+        bad_igns = [ign for ign,gn in enumerate(dec.gns_names) if 'blank' in gn.lower()]
+        good_igns = [ign for ign,gn in enumerate(dec.gns_names) if 'blank' not in gn.lower()]
+        is_good_gn = np.in1d(dec.icodesN,good_igns)
+        
+        plt.figure()
+        kp = scoreA>th_min
+        plt.hist(scoreA[(is_good_gn)&kp],density=True,bins=100,alpha=0.5,label='all genes')
+        if gene is not None:
+            is_gn = dec.icodesN==(list(dec.gns_names).index(gene))
+            plt.hist(scoreA[(is_gn)&kp],density=True,bins=100,alpha=0.5,label=gene)
+        plt.hist(scoreA[(~is_good_gn)&kp],density=True,bins=100,alpha=0.5,label='blanks');
+        plt.legend()
+
+def new_segmentationV2(fl =r'\\192.168.0.100\bbfish100\DCBBL1_4week_6_2_2023\H1_MER_set1\Conv_zscan__030.zarr',
+                     psf_file = '\\\\192.168.0.100\\bbfish100\\DCBBL1_4week_6_2_2023\\MERFISH_Analysis\\psf_750_Scope3_final.npy',
+                     p1=-500,p99=1500,mean_dapi = None,sdapi = 100,
+                    save_folder = r'\\192.168.0.100\bbfish100\DCBBL1_4week_6_2_2023\MERFISH_Analysis',redo=False,plt_val=False):
+
+    ''' Optimized for cell line '''
+    segm_folder = save_folder+os.sep+'Segmentation'
+    if not os.path.exists(segm_folder): os.makedirs(segm_folder)
+    fl_dapi = fl
+    save_fl  = segm_folder+os.sep+os.path.basename(fl_dapi).split('.')[0]+'--'+os.path.basename(os.path.dirname(fl_dapi))+'--dapi_segm.npz'
+    if redo or (not os.path.exists(save_fl)):
+    
+        im = read_im(fl)
+        im_dapi = np.array(im[-1],dtype=np.float32)
+        imd = im_dapi
+        if psf_file is not None:
+            psf = np.load(psf_file)
+            imd = full_deconv(im_dapi,s_=500,pad=100,psf=psf,parameters={'method': 'wiener', 'beta': 0.01},gpu=True,force=True)
+        #im_dapi_ = norm_slice(imd,s=sdapi)
+
+
+        img = imd[::1,::4,::4]#imd#np.array(np.clip((im_dapi_[::1,::4,::4]-p1)/(p99-p1),0,1),dtype=np.float32)
+        #imd_ = imd[::1,::4,::4]
+
+        from cellpose import models, io,utils
+        from scipy import ndimage
+        model = models.Cellpose(gpu=True, model_type='nuclei')
+        masks, flows, styles, diams = model.eval(img,z_axis=0, diameter=20, channels=[0,0],
+                                                 flow_threshold=0.4,cellprob_threshold=0,normalize=True,
+                                                 do_3D=False,stitch_threshold=0.5,
+                                                 progress=True)
+
+        segm = masks
+        shape = np.array(im[-1].shape)
+        cells,volms = np.unique(segm,return_counts=True)
+        cells,volms = cells[1:],volms[1:]
+        segm_ = replace_mat(segm,cells[volms<7000],0)
+        np.savez_compressed(save_fl,segm = segm_,shape = shape)
+    return save_fl
